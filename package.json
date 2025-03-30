@@ -23,6 +23,8 @@
     "object",
     "explorer"
   ],
+  "icon": "icon.png",
+  
   "activationEvents": [
     "onCommand:salesforceObjectExplorer.showSidebar",
     "onView:salesforceObjectExplorerSidebar"
