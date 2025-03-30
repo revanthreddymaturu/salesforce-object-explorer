@@ -82,6 +82,11 @@ To set up the extension locally for development or testing:
    ```soql
    SELECT Id, Name, CreatedBy.Name, (SELECT Id FROM Opportunities) FROM Account LIMIT 10
    ```
+## Demo Video
+
+Here’s a quick demo of the extension in action:
+
+[Watch the demo on Loom](https://www.loom.com/embed/9440531cce0e49e3a199ddf0381b1e66?sid=8929372c-d904-4293-8fdc-6d7655c08040)
 
 ## Roadmap
 
