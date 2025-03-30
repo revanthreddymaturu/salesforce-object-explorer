@@ -2,7 +2,7 @@
   "name": "salesforce-object-explorer",
   "displayName": "Salesforce Object Explorer",
   "description": "Explore Salesforce object metadata and run SOQL queries directly in VS Code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "repository": {
     "type": "git",

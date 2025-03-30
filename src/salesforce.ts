@@ -1,30 +1,23 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import fetch from 'node-fetch'; // Use node-fetch instead of native fetch
+import fetch from 'node-fetch';
 
 const execPromise = promisify(exec);
 
-// Interface for Salesforce authentication
 interface SalesforceAuth {
   accessToken: string;
   instanceUrl: string;
 }
 
-// Interface for the response from /sobjects (getAllObjects)
 interface SObjectsResponse {
-  sobjects: Array<{
-    label: string;
-    name: string;
-  }>;
+  sobjects: Array<{ label: string; name: string }>;
 }
 
-// Interface for the user info response from /chatter/users/me (getUserAndOrgInfo)
 interface UserInfoResponse {
   username: string;
 }
 
-// Interface for the object metadata response from /sobjects/{objectName}/describe (getObjectMetadata)
 interface ObjectMetadataResponse {
   name: string;
   label: string;
@@ -37,6 +30,7 @@ interface ObjectMetadataResponse {
     referenceTo: string[];
     relationshipName?: string;
     custom: boolean;
+    relationshipOrder?: number; // Add this property (0 or 1 for Master-Detail, null for Lookup)
   }>;
   childRelationships: Array<{
     childSObject: string;
@@ -45,21 +39,14 @@ interface ObjectMetadataResponse {
   }>;
 }
 
-// Interface for the record types response from /query (getObjectMetadata)
 interface RecordTypesResponse {
-  records: Array<{
-    Name: string;
-  }>;
+  records: Array<{ Name: string }>;
 }
 
-// Interface for the layouts response from /tooling/sobjects/Layout (getObjectMetadata)
 interface LayoutsResponse {
-  records: Array<{
-    FullName: string;
-  }>;
+  records: Array<{ FullName: string }>;
 }
 
-// Interface for the SOQL query response from /query (runSOQLQuery)
 interface SOQLQueryResponse {
   records: Array<any>;
 }
@@ -67,8 +54,28 @@ interface SOQLQueryResponse {
 let cachedAuth: SalesforceAuth | null = null;
 
 async function authenticateSalesforce(): Promise<SalesforceAuth> {
-  if (cachedAuth) return cachedAuth;
+  // Always test the cached auth, even if it exists
+  if (cachedAuth) {
+    try {
+      console.log('Testing cached Salesforce connection...');
+      const response = await fetch(`${cachedAuth.instanceUrl}/services/data/v59.0/`, {
+        headers: { Authorization: `Bearer ${cachedAuth.accessToken}` },
+      });
+      if (response.ok) {
+        console.log('Cached Salesforce connection is still valid');
+        return cachedAuth;
+      } else {
+        console.warn('Cached Salesforce connection is invalid, re-authenticating...');
+        cachedAuth = null;
+      }
+    } catch (error) {
+      console.error('Error testing cached connection:', error);
+      cachedAuth = null;
+    }
+  }
+
   try {
+    console.log('Attempting to authenticate with Salesforce...');
     const { stdout } = await execPromise('sfdx force:org:display --json');
     const orgInfo = JSON.parse(stdout).result;
     cachedAuth = {
@@ -85,7 +92,19 @@ async function authenticateSalesforce(): Promise<SalesforceAuth> {
     console.log('Salesforce connection successful');
     return cachedAuth;
   } catch (error) {
-    console.error('Auth error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Auth error:', errorMessage);
+    if (errorMessage.includes('sfdx: command not found') || errorMessage.includes('ENOENT')) {
+      const action = await vscode.window.showErrorMessage(
+        'Salesforce CLI (sfdx) not found. Please install it and authenticate with an org.',
+        'Install Salesforce CLI',
+        'Cancel'
+      );
+      if (action === 'Install Salesforce CLI') {
+        vscode.env.openExternal(vscode.Uri.parse('https://developer.salesforce.com/tools/sfdxcli'));
+      }
+      throw new Error('Salesforce CLI (sfdx) is required.');
+    }
     const action = await vscode.window.showWarningMessage(
       'No authenticated Salesforce org found. Authenticate now?',
       'Yes',
@@ -157,49 +176,42 @@ export async function getObjectMetadata(objectName: string): Promise<any> {
       throw new Error('Invalid object name');
     }
     const auth = await authenticateSalesforce();
+    console.log('Fetching metadata for object:', objectName);
+
     const [metadataResponse, recordTypesResponse, layoutsResponse] = await Promise.all([
       fetch(`${auth.instanceUrl}/services/data/v59.0/sobjects/${objectName}/describe`, {
         headers: { Authorization: `Bearer ${auth.accessToken}` },
-        signal: undefined,
       }),
       fetch(`${auth.instanceUrl}/services/data/v59.0/query?q=${encodeURIComponent(`SELECT Name FROM RecordType WHERE SobjectType = '${objectName}'`)}`, {
         headers: { Authorization: `Bearer ${auth.accessToken}` },
-        signal: undefined,
       }),
-      fetch(`${auth.instanceUrl}/services/data/v59.0/tooling/sobjects/Layout`, {
+      fetch(`${auth.instanceUrl}/services/data/v59.0/tooling/query?q=${encodeURIComponent(`SELECT Id, Name FROM Layout WHERE EntityDefinition.QualifiedApiName = '${objectName}'`)}`, {
         headers: { Authorization: `Bearer ${auth.accessToken}` },
-        signal: undefined,
       }),
     ]);
 
     if (!metadataResponse.ok) {
       const errorText = await metadataResponse.text();
-      throw new Error(`HTTP ${metadataResponse.status}: ${errorText}`);
+      throw new Error(`Metadata fetch failed: HTTP ${metadataResponse.status}: ${errorText}`);
     }
     if (!recordTypesResponse.ok) {
       const errorText = await recordTypesResponse.text();
-      throw new Error(`HTTP ${recordTypesResponse.status}: ${errorText}`);
+      throw new Error(`Record types fetch failed: HTTP ${recordTypesResponse.status}: ${errorText}`);
     }
     if (!layoutsResponse.ok) {
       const errorText = await layoutsResponse.text();
-      throw new Error(`HTTP ${layoutsResponse.status}: ${errorText}`);
+      throw new Error(`Layouts fetch failed: HTTP ${layoutsResponse.status}: ${errorText}`);
     }
 
     const metadata = (await metadataResponse.json()) as ObjectMetadataResponse;
     const recordTypes = (await recordTypesResponse.json()) as RecordTypesResponse;
-    const layouts = (await layoutsResponse.json()) as LayoutsResponse;
+    const layouts = (await layoutsResponse.json()) as { records: Array<{ Name: string }> };
 
-    // Log the layouts response for debugging
-    console.log('Layouts response:', layouts);
-
-    // Handle cases where layouts.records is undefined or null
     const pageLayouts = layouts.records && Array.isArray(layouts.records)
-      ? layouts.records
-          .filter((pl) => pl.FullName.startsWith(`${objectName}-`))
-          .map((pl) => ({
-            label: decodeURIComponent(pl.FullName.split('-')[1]),
-            apiName: pl.FullName,
-          }))
+      ? layouts.records.map((pl) => ({
+          label: pl.Name,
+          apiName: pl.Name, // Use Name instead of FullName
+        }))
       : [];
 
     return {
@@ -214,23 +226,25 @@ export async function getObjectMetadata(objectName: string): Promise<any> {
         referenceTo: field.type === 'reference' ? field.referenceTo : [],
         relationshipName: field.relationshipName || null,
         custom: field.custom,
+        isMasterDetail: field.type === 'reference' && field.relationshipName && field.referenceTo.length === 1 && field.relationshipOrder != null,
       })),
       childRelationships: metadata.childRelationships.map((cr) => ({
         childSObject: cr.childSObject,
         relationshipName: cr.relationshipName,
         field: cr.field,
       })),
-      recordTypes: recordTypes.records.map((rt) => ({
-        label: rt.Name,
-        apiName: rt.Name,
-      })),
+      recordTypes: recordTypes.records && Array.isArray(recordTypes.records)
+        ? recordTypes.records.map((rt) => ({
+            label: rt.Name,
+            apiName: rt.Name,
+          }))
+        : [],
       pageLayouts: pageLayouts,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error in getObjectMetadata:', errorMessage);
-    vscode.window.showErrorMessage(`Error fetching metadata: ${errorMessage}`);
-    return null;
+    throw new Error(`Error fetching metadata: ${errorMessage}`);
   }
 }
 export async function runSOQLQuery(query: string): Promise<any> {
@@ -255,3 +269,4 @@ export async function runSOQLQuery(query: string): Promise<any> {
     return [];
   }
 }
+

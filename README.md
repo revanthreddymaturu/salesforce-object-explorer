@@ -13,9 +13,8 @@ The **Salesforce Object Explorer** simplifies working with Salesforce by integra
 - **Object Selection**: Browse and select Salesforce objects from a sidebar tree view.
 - **Metadata Inspection**: View fields, record types, and page layouts for any object.
 - **SOQL Query Builder**: Build simple SOQL queries with a UI or write custom queries manually.
-- **Relationship Support**: Include parent fields (e.g., `CreatedBy.Name`) and subqueries (e.g., `(SELECT Id FROM Opportunities)`).
 - **Query Results**: Display query results in a readable format within VS Code.
-- **Webview Interface**: Interactive sidebar powered by HTML/CSS for a seamless experience.
+- **Webview Interface**: Interactive sidebar powered by a clean UI for a seamless experience.
 
 ## What It Does
 

@@ -19,49 +19,71 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this._view = webviewView;
 
     webviewView.webview.options = { enableScripts: true, localResourceRoots: [this._extensionUri] };
-    console.log('Webview options set:', webviewView.webview.options);
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
     let currentObject: string | null = null;
 
-    Promise.all([getAllObjects(), getUserAndOrgInfo()])
-      .then(([objects, userOrgInfo]) => {
-        console.log('Sending initial data to webview:', objects.length, 'objects', userOrgInfo);
-        webviewView.webview.postMessage({
-          command: 'loadObjects',
-          objects,
-          userName: userOrgInfo.userName,
-          orgName: userOrgInfo.orgName,
-          currentObject,
+    const loadData = () => {
+      Promise.all([getAllObjects(), getUserAndOrgInfo()])
+        .then(([objects, userOrgInfo]) => {
+          console.log('Sending initial data to webview:', objects.length, 'objects', userOrgInfo);
+          webviewView.webview.postMessage({
+            command: 'loadObjects',
+            objects,
+            userName: userOrgInfo.userName,
+            orgName: userOrgInfo.orgName,
+            currentObject,
+          });
+        })
+        .catch(error => {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('Failed to load initial data:', errorMessage);
+          webviewView.webview.postMessage({ command: 'error', message: errorMessage || 'Failed to initialize extension' });
         });
-      })
-      .catch(error => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('Failed to load initial data:', errorMessage);
-        webviewView.webview.postMessage({ command: 'error', message: 'Failed to initialize extension' });
-      });
+    };
+
+    // Load data initially
+    loadData();
+
+    // Reload data when the sidebar becomes visible again
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        console.log('Sidebar became visible, reloading data');
+        loadData();
+      }
+    });
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       console.log('Received message from webview:', message);
       switch (message.command) {
         case 'selectObject':
-          currentObject = message.objectName;
-          const metadata = await getObjectMetadata(message.objectName);
-          if (metadata) {
-            console.log('Sending metadata:', metadata.apiName);
-            console.log('Child Relationships:', metadata.childRelationships.map((cr: any) => ({
-              childSObject: cr.childSObject,
-              relationshipName: cr.relationshipName,
-            })));
-            webviewView.webview.postMessage({ command: 'displayMetadata', data: metadata });
+          try {
+            currentObject = message.objectName;
+            const metadata = await getObjectMetadata(message.objectName);
+            if (metadata) {
+              console.log('Sending metadata:', metadata.apiName);
+              webviewView.webview.postMessage({ command: 'displayMetadata', data: metadata });
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            webviewView.webview.postMessage({ command: 'error', message: errorMessage || 'Failed to fetch metadata' });
           }
           break;
         case 'runSOQLQuery':
-          const queryResult = await runSOQLQuery(message.query);
-          if (queryResult) {
-            console.log('Sending SOQL results:', queryResult.length, 'records');
-            webviewView.webview.postMessage({ command: 'displaySOQLResults', data: queryResult });
+          try {
+            const queryResult = await runSOQLQuery(message.query);
+            if (queryResult) {
+              console.log('Sending SOQL results:', queryResult.length, 'records');
+              webviewView.webview.postMessage({ command: 'displaySOQLResults', data: queryResult });
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            webviewView.webview.postMessage({ command: 'error', message: errorMessage || 'Failed to run SOQL query' });
           }
+          break;
+        case 'reauthenticate':
+          console.log('Re-authentication requested');
+          loadData();
           break;
       }
     });
