@@ -20,6 +20,7 @@ The **Salesforce Object Explorer** simplifies working with Salesforce by integra
 ## What It Does
 
 This extension connects to your Salesforce org via the JSForce library, retrieves metadata, and lets you:
+
 - Explore object structures without leaving VS Code.
 - Run ad-hoc SOQL queries to fetch data.
 - Debug or prototype queries before using them in Apex or scripts.
@@ -29,6 +30,7 @@ This extension connects to your Salesforce org via the JSForce library, retrieve
 To set up the extension locally for development or testing:
 
 ### Prerequisites
+
 - [Node.js](https://nodejs.org/) (v16+ recommended)
 - [npm](https://www.npmjs.com/)
 - [Visual Studio Code](https://code.visualstudio.com/)
@@ -37,21 +39,25 @@ To set up the extension locally for development or testing:
 ### Steps
 
 1. **Clone the Repository**:
+
    ```bash
    git clone https://github.com/revanthreddymaturu/salesforce-object-explorer.git
    cd salesforce-object-explorer
    ```
 
 2. **Install the required dependencies**:
+
    ```bash
    npm install
    ```
 
 3. **Compile the Extension**:
    Compile the extension using Webpack:
+
    ```bash
    npm run compile
    ```
+
    This will bundle TypeScript code into the final extension file located in `out/extension.js`.
 
 4. **Launch the Extension**:
@@ -73,6 +79,7 @@ To set up the extension locally for development or testing:
 3. Select an object to view its metadata or run a SOQL query.
 
    Example query:
+
    ```soql
    SELECT Id, Name, CreatedBy.Name, (SELECT Id FROM Opportunities) FROM Account LIMIT 10
    ```
@@ -91,27 +98,30 @@ We welcome contributions! Here's how to get involved:
 1. **Fork the repository**.
 
 2. **Create a new branch**:
+
    ```bash
    git checkout -b feature/your-feature
    ```
 
 3. **Make your changes** and test them locally with:
+
    ```bash
    npm run compile
    ```
 
 4. **Commit your changes**:
+
    ```bash
    git commit -m "Add your message"
    ```
 
 5. **Push your changes**:
+
    ```bash
    git push origin feature/your-feature
    ```
 
 6. **Open a pull request**.
-
 
 ## License
 
@@ -119,7 +129,6 @@ This extension is licensed under the **MIT License**.
 
 ## Acknowledgments
 
-- Built with **JSForce** for Salesforce API integration.
 - Inspired by Salesforce Developer Tools.
 
 ## Questions?
